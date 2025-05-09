@@ -1,8 +1,12 @@
-import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.List;
 
 public class ReportGenerator {
-    static class TaskRunnable implements Runnable {
-        private final String path;
+    static class TaskRunnable implements Runnable
+    {
+        private final String fileName;
         private double totalCost;
         private int totalAmount;
         private int totalDiscountSum;
@@ -10,8 +14,9 @@ public class ReportGenerator {
         private Product mostExpensiveProduct;
         private double highestCostAfterDiscount;
 
-        public TaskRunnable(String path) {
-            this.path = path;
+        public TaskRunnable(String fileName)
+        {
+            this.fileName = fileName;
             this.totalCost = 0;
             this.totalAmount = 0;
             this.totalDiscountSum = 0;
@@ -21,69 +26,156 @@ public class ReportGenerator {
         }
 
         @Override
-        public void run() {
-            //TODO:
-            // - Read all lines from the input file (path)
-            // - For each line, parse product ID, amount, and discount
-            // - The format of the files are like this:
-            //      [productId],[amount],[discountAmount]
-            // - Find the corresponding product from catalog
-            // - Calculate discounted cost and update total stats (totalAmount, totalCost, totalDiscountSum, totalLines)
-            // - Track the most expensive purchase after discount
+        public void run()
+        {
+            try
+            {
+                InputStream in = ReportGenerator.class.getClassLoader().getResourceAsStream(fileName);
+                if (in == null)
+                {
+                    System.out.println("File not found: " + fileName);
+                    return;
+                }
+
+                List<String> lines = new BufferedReader(new InputStreamReader(in)).lines().toList();
+                for (String line : lines)
+                {
+                    String[] parts = line.split(",");
+                    int productId = Integer.parseInt(parts[0].trim());
+                    int amount = Integer.parseInt(parts[1].trim());
+                    int discount = Integer.parseInt(parts[2].trim());
+                    Product product = null;
+                    for (Product p : ReportGenerator.productCatalog)
+                    {
+                        if (p != null && p.getProductID() == productId)
+                        {
+                            product = p;
+                            break;
+                        }
+                    }
+
+                    if (product != null)
+                    {
+                        double originalPrice = product.getPrice();
+                        double discountedPrice = (originalPrice - discount) * amount;
+                        totalCost += discountedPrice;
+                        totalAmount += amount;
+                        totalDiscountSum += discount;
+                        totalLines++;
+                        if (discountedPrice > highestCostAfterDiscount)
+                        {
+                            highestCostAfterDiscount = discountedPrice;
+                            mostExpensiveProduct = product;
+                        }
+                    }
+                }
+            } catch (Exception e)
+            {
+                System.out.println("Error processing file: " + fileName);
+                e.printStackTrace();
+            }
         }
 
-        public void makeReport() {
-            // TODO:
-            // - Print the filename
-            // - Print total cost and total items bought
-            // - Calculate and print average discount
-            // - Display info about the most expensive purchase after discount
+        public void makeReport()
+        {
+            System.out.println("📄 Report for: " + fileName);
+            System.out.printf("Total Cost: %.2f%n", totalCost);
+            System.out.println("Total Items Bought: " + totalAmount);
+            double avgDiscount = totalLines > 0 ? (double) totalDiscountSum / totalLines : 0.0;
+            System.out.printf("Average Discount: %.2f%n", avgDiscount);
+            if (mostExpensiveProduct != null)
+            {
+                System.out.printf("Most Expensive Purchase After Discount: %s (%.2f)%n",
+                        mostExpensiveProduct.getProductName(), highestCostAfterDiscount);
+            }
+            System.out.println("---------------------------------------------------");
         }
     }
 
-    static class Product {
+    static class Product
+    {
         private int productID;
         private String productName;
         private double price;
 
-        public Product(int productID, String productName, double price) {
+        public Product(int productID, String productName, double price)
+        {
             this.productID = productID;
             this.productName = productName;
             this.price = price;
         }
 
-        public int getProductID() {
+        public int getProductID()
+        {
             return productID;
         }
 
-        public String getProductName() {
+        public String getProductName()
+        {
             return productName;
         }
 
-        public double getPrice() {
+        public double getPrice()
+        {
             return price;
         }
     }
+
     private static final String[] ORDER_FILES = {
-            // TODO: Define the paths to the order detail text files in the resources folder
+            "2021_order_details.txt",
+            "2022_order_details.txt",
+            "2023_order_details.txt",
+            "2024_order_details.txt"
     };
 
-    static Product[] productCatalog = new Product[10];
+    static Product[] productCatalog = new Product[100];
 
-    public static void loadProducts() throws IOException {
-        // TODO:
-        // - Read lines from Products.txt
-        // - For each line, parse product ID, name, and price
-        // - The format of the file is like this:
-        //      [productId],[name],[price]
-        // - Store Product objects in the productCatalog array
+    public static void loadProducts()
+    {
+        try
+        {
+            InputStream in = ReportGenerator.class.getClassLoader().getResourceAsStream("Products.txt");
+            if (in == null)
+            {
+                System.out.println("Products.txt not found in resources!");
+                return;
+            }
+            List<String> lines = new BufferedReader(new InputStreamReader(in)).lines().toList();
+
+            int index = 0;
+            for (String line : lines)
+            {
+                String[] parts = line.split(",");
+                int id = Integer.parseInt(parts[0].trim());
+                String name = parts[1].trim();
+                double price = Double.parseDouble(parts[2].trim());
+                productCatalog[index++] = new Product(id, name, price);
+            }
+        } catch (Exception e)
+        {
+            System.out.println("Error loading products.");
+            e.printStackTrace();
+        }
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        // TODO:
-        // - Create one TaskRunnable and Thread for each order file
-        // - Start all threads
-        // - Wait for all threads to finish
-        // - After all threads are done, call makeReport() on each TaskRunnable
+    public static void main(String[] args) throws InterruptedException
+    {
+        loadProducts();
+        TaskRunnable[] tasks = new TaskRunnable[ORDER_FILES.length];
+        Thread[] threads = new Thread[ORDER_FILES.length];
+        for (int i = 0; i < ORDER_FILES.length; i++)
+        {
+            tasks[i] = new TaskRunnable(ORDER_FILES[i]);
+            threads[i] = new Thread(tasks[i]);
+            threads[i].start();
+        }
+        for (Thread thread : threads)
+        {
+            thread.join();
+        }
+        for (TaskRunnable task : tasks)
+        {
+            task.makeReport();
+        }
     }
 }
